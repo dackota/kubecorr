@@ -24,6 +24,12 @@ kubecorr --context prod -n api api-7d9f-abc
 # pods by label, last 30 minutes
 kubecorr --context prod -n api -l app=api --since 30m
 
+# follow live, like kubectl logs -f, but with events too
+kubecorr -n api -f
+
+# only failure lines
+kubecorr -n api --grep "panic|timeout|OOM"
+
 # logs of the crashed container, as JSON
 kubecorr --context prod -n api api-7d9f-abc --previous -o json | jq .
 ```
@@ -31,6 +37,9 @@ kubecorr --context prod -n api api-7d9f-abc --previous -o json | jq .
 Output:
 
 ```
+api-7d9f-abc  node=node-1  phase=Running
+  app                  ready=false restarts=3   Waiting: CrashLoopBackOff  last exit: OOMKilled (137)
+
 14:02:11.301 EVENT Warning BackOff    pod/api-7d9f-abc  Back-off restarting failed container
 14:02:11.804 LOG   api-7d9f-abc/app  panic: runtime error: nil pointer dereference
 14:02:15.000 EVENT Warning NodeNotReady node/node-1     Node node-1 status is now: NodeNotReady
@@ -38,11 +47,17 @@ Output:
 
 ## What it reads
 
+- Summary header: each container's restart count, state, and last exit code
+  and reason.
 - Logs: every container in the pod (init containers too), with kubelet
   timestamps. Use `-c NAME` for one container. Use `--previous` for the last
   crashed container.
 - Events: for the pod, its owners (ReplicaSet, Deployment, Job, StatefulSet),
   and the node it runs on.
+- Status items (type `Status`): pod conditions, container exits, and node
+  trouble (MemoryPressure, DiskPressure, NotReady). These come from the
+  object status, so they are still there after Events expire.
+- Log lines with words like error, panic, fatal, OOM, timeout print in red.
 
 ## Flags
 
@@ -56,6 +71,8 @@ Output:
 | `--since` | `1h` | how far back to look |
 | `-o, --output` | `text` | `text` or `json` |
 | `-t, --tui` | false | side by side view, see below |
+| `-f, --follow` | false | keep running, show new logs and events live |
+| `--grep` | | keep only log lines that match this regex; events always stay |
 
 Times in text output are local time. JSON times are UTC.
 
@@ -78,6 +95,7 @@ time.
 | `g` `G` | top, bottom |
 | `tab` | switch pane |
 | `w` | toggle line wrap |
+| `f` | toggle follow (auto scroll to newest, on by default with `-f`) |
 | `q` | quit |
 
 ## Limits
@@ -85,6 +103,8 @@ time.
 - Events live about one hour in most clusters. Older failures have logs but no
   events.
 - Log times come from the kubelet, not from the app's own timestamp field.
+- In `-f` text mode, lines print as they arrive. Items from different pods
+  can be a little out of time order. The `--tui` view keeps them sorted.
 
 ## Develop
 

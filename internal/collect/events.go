@@ -83,13 +83,18 @@ func Events(ctx context.Context, cs kubernetes.Interface, ns string, targets []T
 		out = append(out, timeline.Item{
 			Time:   at,
 			Kind:   timeline.KindEvent,
-			Source: strings.ToLower(obj.Kind) + "/" + obj.Name,
+			Source: sourceOf(obj),
 			Type:   ev.Type,
 			Reason: ev.Reason,
 			Text:   ev.Message,
 		})
 	}
 	return out, nil
+}
+
+// sourceOf names an involved object as "kind/name".
+func sourceOf(obj corev1.ObjectReference) string {
+	return strings.ToLower(obj.Kind) + "/" + obj.Name
 }
 
 // eventTime picks the best timestamp an Event offers.

@@ -20,3 +20,11 @@ func JSON(w io.Writer, items []timeline.Item) error {
 	}
 	return nil
 }
+
+// JSONLine writes one item as a single JSON line (for streaming).
+func JSONLine(w io.Writer, it timeline.Item) error {
+	if err := json.NewEncoder(w).Encode(it); err != nil {
+		return fmt.Errorf("encode json line: %w", err)
+	}
+	return nil
+}

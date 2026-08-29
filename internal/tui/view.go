@@ -31,7 +31,11 @@ func (m Model) View() string {
 		return "loading..."
 	}
 	header := styleHeader.Render(fmt.Sprintf(" kubecorr  ns=%s  ctx=%s", m.namespace, m.context))
-	footer := styleHint.Render(" [q] quit  [tab] focus  [j/k] scroll  [g/G] top/end  [w] wrap")
+	followHint := "[f] follow"
+	if m.follow {
+		followHint = "[f] FOLLOWING"
+	}
+	footer := styleHint.Render(" [q] quit  [tab] focus  [j/k] scroll  [g/G] top/end  [w] wrap  " + followHint)
 
 	summaryRows := 0
 	if m.summary != "" {

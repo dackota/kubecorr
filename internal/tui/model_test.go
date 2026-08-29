@@ -117,3 +117,36 @@ func TestViewShowsSummaryUnderHeader(t *testing.T) {
 		t.Fatal("summary missing from view")
 	}
 }
+
+func TestItemMsgAppendsInTimeOrder(t *testing.T) {
+	m := fixtureModel()
+
+	m, _ = update(m, ItemMsg(timeline.Item{Time: time.Unix(5, 0), Kind: timeline.KindLog, Text: "late"}))
+	m, _ = update(m, ItemMsg(timeline.Item{Time: time.Unix(7, 0), Kind: timeline.KindEvent, Text: "ev"}))
+
+	if len(m.logs) != 5 || m.logs[2].Text != "late" {
+		t.Fatalf("log insert wrong: %+v", m.logs)
+	}
+	if len(m.events) != 4 || m.events[2].Text != "ev" {
+		t.Fatalf("event insert wrong: %+v", m.events)
+	}
+}
+
+func TestFollowKeepsCursorAtEndAndScrollTurnsItOff(t *testing.T) {
+	m := fixtureModel().WithFollow(true)
+
+	m, _ = update(m, ItemMsg(timeline.Item{Time: time.Unix(20, 0), Kind: timeline.KindLog, Text: "new"}))
+	if m.logCursor != len(m.logs)-1 {
+		t.Fatalf("follow should move to end, cursor=%d", m.logCursor)
+	}
+
+	m, _ = update(m, key("k"))
+	if m.follow {
+		t.Fatal("scrolling up should turn follow off")
+	}
+
+	m, _ = update(m, key("f"))
+	if !m.follow || m.logCursor != len(m.logs)-1 {
+		t.Fatalf("f should turn follow on and jump to end, follow=%v cursor=%d", m.follow, m.logCursor)
+	}
+}

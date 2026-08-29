@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -35,6 +36,9 @@ type Model struct {
 	width       int
 	height      int
 	summary     string
+	follow      bool
+	stream      <-chan timeline.Item
+	streamCtx   context.Context
 }
 
 // New builds a model from already collected items.
@@ -49,7 +53,7 @@ func (m Model) WithSummary(s string) Model {
 }
 
 // Init satisfies tea.Model.
-func (m Model) Init() tea.Cmd { return nil }
+func (m Model) Init() tea.Cmd { return waitForItem(m.streamCtx, m.stream) }
 
 // Update satisfies tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { return update(m, msg) }
@@ -62,6 +66,11 @@ func update(m Model, msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		return handleKey(m, msg)
+	case ItemMsg:
+		return addItem(m, timeline.Item(msg)), waitForItem(m.streamCtx, m.stream)
+	case streamDoneMsg:
+		m.stream = nil
+		return m, nil
 	}
 	return m, nil
 }
@@ -74,6 +83,11 @@ func handleKey(m Model, msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.focus = 1 - m.focus
 	case "w":
 		m.wrap = !m.wrap
+	case "f":
+		m.follow = !m.follow
+		if m.follow {
+			m = jumpToEnd(m)
+		}
 	case "j", "down":
 		m = move(m, 1)
 	case "k", "up":
@@ -91,7 +105,9 @@ func handleKey(m Model, msg tea.KeyMsg) (Model, tea.Cmd) {
 }
 
 // move shifts the focused cursor by delta and re-links the other pane by time.
+// Any manual move turns follow off.
 func move(m Model, delta int) Model {
+	m.follow = false
 	if m.focus == focusLogs {
 		m.logCursor = clamp(m.logCursor+delta, len(m.logs))
 		if len(m.logs) > 0 {
