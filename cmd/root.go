@@ -118,7 +118,11 @@ func (o *options) run(ctx context.Context, w io.Writer, args []string) error {
 		stream = collect.Stream(ctx, cs, streamTargets, collect.LogOptions{Container: o.container}, collect.WithExtraNamespaces(o.extraNS...))
 	}
 	if o.tui {
-		return o.runTUI(ctx, items, summaries, ns, stream)
+		var refresh tui.RefreshFunc
+		if o.follow {
+			refresh = o.summaryRefresher(ctx, cs, ns, args)
+		}
+		return o.runTUI(ctx, items, summaries, ns, stream, refresh)
 	}
 	if err := o.write(w, timeline.Merge(items, nil), summaries); err != nil || stream == nil {
 		return err
@@ -218,7 +222,7 @@ func filterLogs(items []timeline.Item, re *regexp.Regexp) []timeline.Item {
 	return out
 }
 
-func (o *options) runTUI(ctx context.Context, items []timeline.Item, summaries []summary.PodSummary, ns string, stream <-chan timeline.Item) error {
+func (o *options) runTUI(ctx context.Context, items []timeline.Item, summaries []summary.PodSummary, ns string, stream <-chan timeline.Item, refresh tui.RefreshFunc) error {
 	var logs, events []timeline.Item
 	for _, it := range items {
 		if it.Kind == timeline.KindEvent {
@@ -234,7 +238,8 @@ func (o *options) runTUI(ctx context.Context, items []timeline.Item, summaries [
 	m := tui.New(timeline.Merge(logs, nil), timeline.Merge(events, nil), ns, ctxName).
 		WithSummary(summaries).
 		WithFollow(stream != nil).
-		WithStream(ctx, stream)
+		WithStream(ctx, stream).
+		WithRefresh(refresh)
 	if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx)).Run(); err != nil {
 		return fmt.Errorf("run tui: %w", err)
 	}
@@ -279,4 +284,24 @@ func (o *options) writeStream(w io.Writer, stream <-chan timeline.Item) error {
 		}
 	}
 	return nil
+}
+
+// summaryRefresher returns a function that reloads the pods and rebuilds
+// their summaries. On any error it keeps the old summaries by returning nil.
+func (o *options) summaryRefresher(ctx context.Context, cs kubernetes.Interface, ns string, args []string) tui.RefreshFunc {
+	var last []summary.PodSummary
+	return func(events []timeline.Item) []summary.PodSummary {
+		pods, err := o.pods(ctx, cs, ns, args)
+		if err != nil {
+			return last
+		}
+		out := make([]summary.PodSummary, 0, len(pods))
+		for i := range pods {
+			s := summary.FromPod(&pods[i])
+			s.Probes = summary.ProbeFailures(events, pods[i].Name)
+			out = append(out, s)
+		}
+		last = out
+		return out
+	}
 }

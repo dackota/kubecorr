@@ -39,6 +39,7 @@ type Model struct {
 	follow      bool
 	stream      <-chan timeline.Item
 	streamCtx   context.Context
+	refresh     RefreshFunc
 }
 
 // New builds a model from already collected items.
@@ -53,7 +54,9 @@ func (m Model) WithSummary(s []summary.PodSummary) Model {
 }
 
 // Init satisfies tea.Model.
-func (m Model) Init() tea.Cmd { return waitForItem(m.streamCtx, m.stream) }
+func (m Model) Init() tea.Cmd {
+	return tea.Batch(waitForItem(m.streamCtx, m.stream), scheduleRefresh(m))
+}
 
 // Update satisfies tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { return update(m, msg) }
@@ -71,6 +74,11 @@ func update(m Model, msg tea.Msg) (Model, tea.Cmd) {
 	case streamDoneMsg:
 		m.stream = nil
 		return m, nil
+	case refreshTickMsg:
+		return m, runRefresh(m)
+	case summariesMsg:
+		m.summaries = []summary.PodSummary(msg)
+		return m, scheduleRefresh(m)
 	}
 	return m, nil
 }

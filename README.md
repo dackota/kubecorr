@@ -100,6 +100,8 @@ time.
 | `tab` | switch pane |
 | `w` | toggle line wrap |
 | `f` | toggle follow (auto scroll to newest, on by default with `-f`) |
+
+With `-f`, the header reloads every 3 seconds.
 | `q` | quit |
 
 ## Limits

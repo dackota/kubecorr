@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/dackota/kubecorr/internal/summary"
 	"github.com/dackota/kubecorr/internal/timeline"
 )
 
@@ -185,5 +186,42 @@ func TestView_WrappedCursorLineIsVisible(t *testing.T) {
 	// The cursor row is rendered from the item's text, so the text must appear.
 	if !strings.Contains(out, "very long log text") {
 		t.Fatal("no log text visible with wrap on")
+	}
+}
+
+func TestRefreshTickReplacesSummariesAndSchedulesNextTick(t *testing.T) {
+	calls := 0
+	refresh := func(events []timeline.Item) []summary.PodSummary {
+		calls++
+		return []summary.PodSummary{{Pod: "fresh-pod", Phase: "Running"}}
+	}
+	m := fixtureModel().WithSummary(sampleSummaries()).WithRefresh(refresh)
+
+	m2, cmd := update(m, refreshTickMsg{})
+	if cmd == nil {
+		t.Fatal("want a command that runs the refresh")
+	}
+	msg := cmd()
+	got, ok := msg.(summariesMsg)
+	if !ok {
+		t.Fatalf("want summariesMsg got %T", msg)
+	}
+	m3, next := update(m2, got)
+
+	if calls != 1 || len(m3.summaries) != 1 || m3.summaries[0].Pod != "fresh-pod" {
+		t.Fatalf("summaries not replaced: calls=%d %+v", calls, m3.summaries)
+	}
+	if next == nil {
+		t.Fatal("want the next tick scheduled")
+	}
+	if len(m.summaries) != 2 {
+		t.Fatal("old model was mutated")
+	}
+}
+
+func TestNoRefreshFuncMeansNoTick(t *testing.T) {
+	m := fixtureModel()
+	if cmd := m.Init(); cmd != nil {
+		t.Fatal("no stream and no refresh should give no command")
 	}
 }
