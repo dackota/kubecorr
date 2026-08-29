@@ -48,7 +48,8 @@ api-7d9f-abc  node=node-1  phase=Running
 ## What it reads
 
 - Summary header: each container's restart count, state, and last exit code
-  and reason.
+  and reason. Also probe failures per type (readiness, liveness, startup)
+  with a count and the time of the last one.
 - Logs: every container in the pod (init containers too), with kubelet
   timestamps. Use `-c NAME` for one container. Use `--previous` for the last
   crashed container.

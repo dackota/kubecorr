@@ -24,6 +24,7 @@ type PodSummary struct {
 	Node       string             `json:"node"`
 	Phase      string             `json:"phase"`
 	Containers []ContainerSummary `json:"containers"`
+	Probes     []ProbeSummary     `json:"probes,omitempty"`
 }
 
 // FromPod reads restart and exit data out of a pod's status.
@@ -69,6 +70,17 @@ func Text(pods []PodSummary) string {
 			}
 			b.WriteString("\n")
 		}
+		if len(p.Probes) > 0 {
+			b.WriteString("  probes: " + probeText(p.Probes) + "\n")
+		}
 	}
 	return b.String()
+}
+
+func probeText(probes []ProbeSummary) string {
+	parts := make([]string, 0, len(probes))
+	for _, p := range probes {
+		parts = append(parts, fmt.Sprintf("%s failed %dx (last %s)", p.Probe, p.Failures, p.Last.Local().Format("15:04:05")))
+	}
+	return strings.Join(parts, ", ")
 }

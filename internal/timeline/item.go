@@ -19,4 +19,5 @@ type Item struct {
 	Type   string    `json:"type,omitempty"`   // event only: Normal or Warning
 	Reason string    `json:"reason,omitempty"` // event only
 	Text   string    `json:"text"`
+	Count  int       `json:"count,omitempty"` // event only: times the event repeated
 }

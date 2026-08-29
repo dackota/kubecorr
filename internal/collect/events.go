@@ -87,6 +87,7 @@ func Events(ctx context.Context, cs kubernetes.Interface, ns string, targets []T
 			Type:   ev.Type,
 			Reason: ev.Reason,
 			Text:   ev.Message,
+			Count:  int(ev.Count),
 		})
 	}
 	return out, nil

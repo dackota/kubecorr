@@ -104,7 +104,9 @@ func (o *options) run(ctx context.Context, w io.Writer, args []string) error {
 			return err
 		}
 		items = append(items, got...)
-		summaries = append(summaries, summary.FromPod(&pods[i]))
+		s := summary.FromPod(&pods[i])
+		s.Probes = summary.ProbeFailures(got, pods[i].Name)
+		summaries = append(summaries, s)
 		streamTargets = append(streamTargets, collect.StreamTarget{Pod: &pods[i], Targets: targets})
 	}
 	items = filterLogs(items, o.grepRE)
