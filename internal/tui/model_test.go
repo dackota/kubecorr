@@ -1,0 +1,112 @@
+package tui
+
+import (
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/dackota/kubecorr/internal/timeline"
+)
+
+func fixtureModel() Model {
+	logs := []timeline.Item{at(1), at(4), at(6), at(10)}
+	events := []timeline.Item{at(2), at(5), at(9)}
+	m := New(logs, events, "api", "prod")
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+	return m
+}
+
+func key(s string) tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+}
+
+func TestScrollLogsMovesEventCursorByTime(t *testing.T) {
+	m := fixtureModel()
+
+	m, _ = update(m, key("j")) // log 4
+	m, _ = update(m, key("j")) // log 6
+
+	if m.logCursor != 2 {
+		t.Fatalf("logCursor want 2 got %d", m.logCursor)
+	}
+	if m.eventCursor != 1 { // event at 5 is nearest <= 6
+		t.Fatalf("eventCursor want 1 got %d", m.eventCursor)
+	}
+}
+
+func TestTabThenScrollEventsMovesLogCursor(t *testing.T) {
+	m := fixtureModel()
+
+	m, _ = update(m, tea.KeyMsg{Type: tea.KeyTab})
+	m, _ = update(m, key("G")) // event 9
+
+	if m.focus != focusEvents || m.eventCursor != 2 {
+		t.Fatalf("focus=%v eventCursor=%d", m.focus, m.eventCursor)
+	}
+	if m.logCursor != 2 { // log at 6 is nearest <= 9
+		t.Fatalf("logCursor want 2 got %d", m.logCursor)
+	}
+}
+
+func TestCursorDoesNotGoOutOfRange(t *testing.T) {
+	m := fixtureModel()
+	m, _ = update(m, key("k"))
+	if m.logCursor != 0 {
+		t.Fatal("went above 0")
+	}
+	for i := 0; i < 20; i++ {
+		m, _ = update(m, key("j"))
+	}
+	if m.logCursor != 3 {
+		t.Fatalf("went past end: %d", m.logCursor)
+	}
+}
+
+func TestQuitReturnsQuitCmd(t *testing.T) {
+	m := fixtureModel()
+	_, cmd := update(m, key("q"))
+	if cmd == nil {
+		t.Fatal("want quit cmd")
+	}
+}
+
+func TestWrapToggles(t *testing.T) {
+	m := fixtureModel()
+	m, _ = update(m, key("w"))
+	if !m.wrap {
+		t.Fatal("wrap should be on")
+	}
+}
+
+func TestViewRendersWithoutPanicOnEmptyData(t *testing.T) {
+	m := New(nil, nil, "ns", "ctx")
+	m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 10})
+	if out := m.View(); out == "" {
+		t.Fatal("empty view")
+	}
+}
+
+func TestViewContainsBothPaneTitles(t *testing.T) {
+	m := fixtureModel()
+	out := m.View()
+	for _, want := range []string{"Logs", "Events", "api"} {
+		if !contains(out, want) {
+			t.Fatalf("view missing %q", want)
+		}
+	}
+	_ = time.Now
+}
+
+func contains(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || indexOf(s, sub) >= 0)
+}
+
+func indexOf(s, sub string) int {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return i
+		}
+	}
+	return -1
+}

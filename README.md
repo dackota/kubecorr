@@ -55,10 +55,30 @@ Output:
 | `-p, --previous` | false | logs of the last terminated container |
 | `--since` | `1h` | how far back to look |
 | `-o, --output` | `text` | `text` or `json` |
+| `-t, --tui` | false | side by side view, see below |
 
 Times in text output are local time. JSON times are UTC.
 
 Colors turn on when stdout is a terminal. Set `NO_COLOR=1` to turn them off.
+
+## Side by side view
+
+```sh
+kubecorr -n api --tui
+```
+
+Logs on the left, events on the right. The two panes are linked by time.
+When you scroll one, the other jumps to the nearest item at or before that
+time.
+
+| Key | Action |
+|-----|--------|
+| `j` `k` or arrows | scroll one line |
+| `ctrl+d` `ctrl+u` or PgDn PgUp | scroll ten lines |
+| `g` `G` | top, bottom |
+| `tab` | switch pane |
+| `w` | toggle line wrap |
+| `q` | quit |
 
 ## Limits
 

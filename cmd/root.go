@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 	corev1 "k8s.io/api/core/v1"
@@ -18,6 +19,7 @@ import (
 	"github.com/dackota/kubecorr/internal/collect"
 	"github.com/dackota/kubecorr/internal/format"
 	"github.com/dackota/kubecorr/internal/timeline"
+	"github.com/dackota/kubecorr/internal/tui"
 )
 
 const (
@@ -33,6 +35,7 @@ type options struct {
 	previous  bool
 	since     time.Duration
 	output    string
+	tui       bool
 }
 
 // New builds the root command.
@@ -51,7 +54,8 @@ every pod in the namespace.`,
 		Example: `  kubecorr -n api
   kubecorr --context prod -n api api-7d9f-abc
   kubecorr --context prod -n api -l app=api --since 30m
-  kubecorr --context prod -n api api-7d9f-abc --previous -o json | jq .`,
+  kubecorr --context prod -n api api-7d9f-abc --previous -o json | jq .
+  kubecorr -n api --tui`,
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -65,6 +69,7 @@ every pod in the namespace.`,
 	cmd.Flags().BoolVarP(&o.previous, "previous", "p", false, "read logs of the last terminated container")
 	cmd.Flags().DurationVar(&o.since, "since", defaultSince, "how far back to look")
 	cmd.Flags().StringVarP(&o.output, "output", "o", outputText, "output format: text or json")
+	cmd.Flags().BoolVarP(&o.tui, "tui", "t", false, "open a side by side view of logs and events")
 	return cmd
 }
 
@@ -89,7 +94,30 @@ func (o *options) run(ctx context.Context, w io.Writer, args []string) error {
 		}
 		items = append(items, got...)
 	}
+	if o.tui {
+		return o.runTUI(items, ns)
+	}
 	return o.write(w, timeline.Merge(items, nil))
+}
+
+func (o *options) runTUI(items []timeline.Item, ns string) error {
+	var logs, events []timeline.Item
+	for _, it := range items {
+		if it.Kind == timeline.KindEvent {
+			events = append(events, it)
+		} else {
+			logs = append(logs, it)
+		}
+	}
+	ctxName := ""
+	if o.config.Context != nil {
+		ctxName = *o.config.Context
+	}
+	m := tui.New(timeline.Merge(logs, nil), timeline.Merge(events, nil), ns, ctxName)
+	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
+		return fmt.Errorf("run tui: %w", err)
+	}
+	return nil
 }
 
 func (o *options) validate(args []string) error {
