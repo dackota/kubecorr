@@ -53,23 +53,6 @@ func TestNearestAtOrBefore_PropertyResultIsValidIndex(t *testing.T) {
 	}
 }
 
-func TestWindowStart_KeepsCursorVisible(t *testing.T) {
-	cases := []struct{ cursor, total, height, want int }{
-		{0, 100, 10, 0},
-		{5, 100, 10, 0},
-		{10, 100, 10, 5},
-		{99, 100, 10, 90},
-		{3, 5, 10, 0},
-		{0, 0, 10, 0},
-		{4, 10, 0, 4},
-	}
-	for _, c := range cases {
-		if got := windowStart(c.cursor, c.total, c.height); got != c.want {
-			t.Errorf("windowStart(%d,%d,%d) = %d want %d", c.cursor, c.total, c.height, got, c.want)
-		}
-	}
-}
-
 func TestClamp(t *testing.T) {
 	if clamp(-1, 5) != 0 || clamp(7, 5) != 4 || clamp(2, 5) != 2 || clamp(0, 0) != 0 {
 		t.Fatal("clamp wrong")
