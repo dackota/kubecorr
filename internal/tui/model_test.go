@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -148,5 +149,41 @@ func TestFollowKeepsCursorAtEndAndScrollTurnsItOff(t *testing.T) {
 	m, _ = update(m, key("f"))
 	if !m.follow || m.logCursor != len(m.logs)-1 {
 		t.Fatalf("f should turn follow on and jump to end, follow=%v cursor=%d", m.follow, m.logCursor)
+	}
+}
+
+func longModel(wrap bool) Model {
+	long := strings.Repeat("very long log text ", 20)
+	var logs, events []timeline.Item
+	for i := 0; i < 30; i++ {
+		logs = append(logs, timeline.Item{Time: time.Unix(int64(i), 0), Kind: timeline.KindLog, Source: "pod-a/app", Text: long})
+		events = append(events, timeline.Item{Time: time.Unix(int64(i), 0), Kind: timeline.KindEvent, Type: "Warning", Reason: "BackOff", Source: "pod/pod-a", Text: long})
+	}
+	m := New(logs, events, "ns", "ctx").WithSummary("pod-a  node=n1\n  app restarts=3")
+	m.wrap = wrap
+	m, _ = update(m, tea.WindowSizeMsg{Width: 100, Height: 24})
+	return m
+}
+
+func TestView_AlwaysFillsExactlyTheTerminalHeight(t *testing.T) {
+	for _, wrap := range []bool{false, true} {
+		m := longModel(wrap)
+		for _, cursor := range []int{0, 15, 29} {
+			m.logCursor = cursor
+			got := strings.Count(m.View(), "\n") + 1
+			if got != m.height {
+				t.Errorf("wrap=%v cursor=%d: view has %d lines, terminal has %d", wrap, cursor, got, m.height)
+			}
+		}
+	}
+}
+
+func TestView_WrappedCursorLineIsVisible(t *testing.T) {
+	m := longModel(true)
+	m.logCursor = 15
+	out := stripANSI(m.View())
+	// The cursor row is rendered from the item's text, so the text must appear.
+	if !strings.Contains(out, "very long log text") {
+		t.Fatal("no log text visible with wrap on")
 	}
 }

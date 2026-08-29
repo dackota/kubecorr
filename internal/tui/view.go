@@ -57,24 +57,59 @@ func (m Model) View() string {
 
 type lineFn func(timeline.Item, int) string
 
+// rows builds exactly height screen rows. The cursor item sits near the
+// middle. With wrap on, one item can take several rows, and every row of
+// the cursor item is highlighted.
+func (m Model) rows(items []timeline.Item, cursor int, width, height int, render lineFn) []string {
+	if len(items) == 0 {
+		return make([]string, height)
+	}
+	cursor = clamp(cursor, len(items))
+	itemRows := func(i int) []string {
+		line := render(items[i], width)
+		parts := []string{line}
+		if m.wrap {
+			parts = strings.Split(lipgloss.NewStyle().Width(width).Render(line), "\n")
+		}
+		if i == cursor {
+			for j := range parts {
+				parts[j] = styleCursor.Render(padRight(stripANSI(parts[j]), width))
+			}
+		}
+		return parts
+	}
+	// Fill the top half walking backward from the cursor, then the rest forward.
+	top := cursor
+	var above []string
+	for top > 0 && len(above) < height/2 {
+		top--
+		above = append(itemRows(top), above...)
+	}
+	out := append(above, itemRows(cursor)...)
+	for i := cursor + 1; i < len(items) && len(out) < height; i++ {
+		out = append(out, itemRows(i)...)
+	}
+	// If the bottom ran out of items, pull more rows in from above.
+	for top > 0 && len(out) < height {
+		top--
+		out = append(itemRows(top), out...)
+	}
+	if len(out) > height {
+		out = out[len(out)-height:]
+	}
+	for len(out) < height {
+		out = append(out, "")
+	}
+	return out
+}
+
 func (m Model) pane(title string, items []timeline.Item, cursor int, focused bool, width, height int, render lineFn) string {
 	inner := width - 2 // borders
 	if inner < 1 {
 		inner = 1
 	}
 	title = fmt.Sprintf(" %s (%d) ", title, len(items))
-	rows := make([]string, 0, height)
-	start := windowStart(cursor, len(items), height)
-	for i := start; i < len(items) && len(rows) < height; i++ {
-		line := render(items[i], inner)
-		if i == cursor {
-			line = styleCursor.Render(padRight(stripANSI(line), inner))
-		}
-		rows = append(rows, line)
-	}
-	for len(rows) < height {
-		rows = append(rows, "")
-	}
+	rows := m.rows(items, cursor, inner, height, render)
 	body := strings.Join(rows, "\n")
 	style := styleBlur
 	if focused {
