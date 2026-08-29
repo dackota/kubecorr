@@ -18,6 +18,7 @@ type LogOptions struct {
 	Container string // empty means every container in the pod
 	Previous  bool   // read the last terminated container's logs
 	Since     time.Time
+	Tail      int64 // max lines per container; 0 means no limit
 }
 
 // Logs reads logs with kubelet timestamps for the chosen containers and
@@ -58,6 +59,7 @@ func readContainerLog(ctx context.Context, cs kubernetes.Interface, pod *corev1.
 		Previous:     opts.Previous,
 		Timestamps:   true,
 		SinceSeconds: &seconds,
+		TailLines:    tailLines(opts.Tail),
 	})
 	rc, err := req.Stream(ctx)
 	if err != nil {
@@ -69,4 +71,12 @@ func readContainerLog(ctx context.Context, cs kubernetes.Interface, pod *corev1.
 		return "", err
 	}
 	return string(b), nil
+}
+
+// tailLines converts the flag value to the API form. 0 means no limit.
+func tailLines(n int64) *int64 {
+	if n <= 0 {
+		return nil
+	}
+	return &n
 }

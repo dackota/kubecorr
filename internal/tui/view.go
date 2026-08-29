@@ -35,7 +35,13 @@ func (m Model) View() string {
 	if m.follow {
 		followHint = "[f] FOLLOWING"
 	}
-	footer := styleHint.Render(" [q] quit  [tab] focus  [j/k] scroll  [g/G] top/end  [w] wrap  " + followHint)
+	footer := styleHint.Render(" [q] quit  [tab] focus  [j/k] scroll  [g/G] top/end  [w] wrap  [/] filter  " + followHint)
+	switch {
+	case m.editing:
+		footer = styleHeader.Render(" /"+m.query+"_") + styleHint.Render("   enter keep, esc clear")
+	case m.query != "":
+		footer = styleHeader.Render(" filter: "+m.query) + styleHint.Render(fmt.Sprintf("   %d logs, %d events   esc clear", len(m.visLogs), len(m.visEvents)))
+	}
 
 	summaryRows := 0
 	if s := renderSummary(m.summaries, m.width); s != "" {
@@ -49,8 +55,8 @@ func (m Model) View() string {
 	logWidth := int(float64(m.width) * logPaneShare)
 	eventWidth := m.width - logWidth
 
-	left := m.pane("Logs", m.logs, m.logCursor, m.focus == focusLogs, logWidth, bodyHeight, m.logLine)
-	right := m.pane("Events", m.events, m.eventCursor, m.focus == focusEvents, eventWidth, bodyHeight, m.eventLine)
+	left := m.pane("Logs", m.visLogs, m.logCursor, m.focus == focusLogs, logWidth, bodyHeight, m.logLine)
+	right := m.pane("Events", m.visEvents, m.eventCursor, m.focus == focusEvents, eventWidth, bodyHeight, m.eventLine)
 
 	return header + "\n" + lipgloss.JoinHorizontal(lipgloss.Top, left, right) + "\n" + footer
 }

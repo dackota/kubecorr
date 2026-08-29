@@ -72,6 +72,7 @@ api-7d9f-abc  node=node-1  phase=Running
 | `-c, --container` | all | one container only |
 | `-p, --previous` | false | logs of the last terminated container |
 | `--since` | `1h` | how far back to look |
+| `--tail` | `1000` | max log lines per container; `0` for no limit |
 | `-o, --output` | `text` | `text` or `json` |
 | `-t, --tui` | false | side by side view, see below |
 | `-f, --follow` | false | keep running, show new logs and events live |
@@ -99,6 +100,7 @@ time.
 | `g` `G` | top, bottom |
 | `tab` | switch pane |
 | `w` | toggle line wrap |
+| `/` | type a filter, then enter. Filters both panes by pod, reason, or text. `esc` clears |
 | `f` | toggle follow (auto scroll to newest, on by default with `-f`) |
 
 With `-f`, the header reloads every 3 seconds.

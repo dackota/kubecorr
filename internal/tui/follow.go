@@ -44,8 +44,12 @@ func waitForItem(ctx context.Context, ch <-chan timeline.Item) tea.Cmd {
 	}
 }
 
-// insertSorted returns a new slice with it placed by time.
+// insertSorted places it by time. The common case, a newest item, is a plain
+// append. Older items are inserted into a copy.
 func insertSorted(items []timeline.Item, it timeline.Item) []timeline.Item {
+	if len(items) == 0 || !items[len(items)-1].Time.After(it.Time) {
+		return append(items, it)
+	}
 	i := len(items)
 	for i > 0 && items[i-1].Time.After(it.Time) {
 		i--
@@ -57,10 +61,20 @@ func insertSorted(items []timeline.Item, it timeline.Item) []timeline.Item {
 }
 
 func addItem(m Model, it timeline.Item) Model {
+	visible := matches(it, m.query)
 	if it.Kind == timeline.KindEvent {
 		m.events = insertSorted(m.events, it)
+		if visible {
+			m.visEvents = insertSorted(m.visEvents, it)
+		}
 	} else {
 		m.logs = insertSorted(m.logs, it)
+		if visible {
+			m.visLogs = insertSorted(m.visLogs, it)
+		}
+	}
+	if m.query == "" {
+		m.visLogs, m.visEvents = m.logs, m.events
 	}
 	if m.follow {
 		m = jumpToEnd(m)
@@ -69,7 +83,7 @@ func addItem(m Model, it timeline.Item) Model {
 }
 
 func jumpToEnd(m Model) Model {
-	m.logCursor = clamp(len(m.logs)-1, len(m.logs))
-	m.eventCursor = clamp(len(m.events)-1, len(m.events))
+	m.logCursor = clamp(len(m.visLogs)-1, len(m.visLogs))
+	m.eventCursor = clamp(len(m.visEvents)-1, len(m.visEvents))
 	return m
 }

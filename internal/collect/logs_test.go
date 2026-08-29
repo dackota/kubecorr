@@ -43,3 +43,12 @@ func TestLogs_DoesNotErrorWithFakeClient(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestTailLines_ZeroMeansNoLimit(t *testing.T) {
+	if tailLines(0) != nil {
+		t.Fatal("0 should mean unlimited")
+	}
+	if v := tailLines(500); v == nil || *v != 500 {
+		t.Fatalf("got %v", v)
+	}
+}

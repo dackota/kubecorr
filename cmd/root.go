@@ -26,6 +26,7 @@ import (
 
 const (
 	defaultSince = time.Hour
+	defaultTail  = 1000
 	outputText   = "text"
 	outputJSON   = "json"
 )
@@ -42,6 +43,7 @@ type options struct {
 	grepRE    *regexp.Regexp
 	follow    bool
 	extraNS   []string
+	tail      int64
 }
 
 // New builds the root command.
@@ -81,6 +83,7 @@ every pod in the namespace.`,
 	cmd.Flags().BoolVarP(&o.tui, "tui", "t", false, "open a side by side view of logs and events")
 	cmd.Flags().StringVar(&o.grep, "grep", "", "only keep log lines that match this regular expression")
 	cmd.Flags().BoolVarP(&o.follow, "follow", "f", false, "keep running and show new logs and events as they happen")
+	cmd.Flags().Int64Var(&o.tail, "tail", defaultTail, "max log lines per container; 0 for no limit")
 	cmd.Flags().StringSliceVar(&o.extraNS, "extra-ns", nil, "also show Warning events from these namespaces (example: kube-system)")
 	return cmd
 }
@@ -200,7 +203,7 @@ func collectPod(ctx context.Context, cs kubernetes.Interface, pod *corev1.Pod, s
 		return nil, nil, err
 	}
 	events = append(events, nodeItems...)
-	logs, err := collect.Logs(ctx, cs, pod, collect.LogOptions{Container: o.container, Previous: o.previous, Since: since})
+	logs, err := collect.Logs(ctx, cs, pod, collect.LogOptions{Container: o.container, Previous: o.previous, Since: since, Tail: o.tail})
 	if err != nil {
 		return nil, nil, err
 	}

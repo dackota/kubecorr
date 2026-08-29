@@ -225,3 +225,85 @@ func TestNoRefreshFuncMeansNoTick(t *testing.T) {
 		t.Fatal("no stream and no refresh should give no command")
 	}
 }
+
+func TestSlashFilterAppliesToBothPanes(t *testing.T) {
+	logs := []timeline.Item{
+		{Time: time.Unix(1, 0), Kind: timeline.KindLog, Source: "hog-1/app", Text: "alloc"},
+		{Time: time.Unix(2, 0), Kind: timeline.KindLog, Source: "crasher-1/app", Text: "panic"},
+	}
+	events := []timeline.Item{
+		{Time: time.Unix(1, 0), Kind: timeline.KindEvent, Source: "pod/hog-1", Reason: "BackOff"},
+		{Time: time.Unix(2, 0), Kind: timeline.KindEvent, Source: "pod/crasher-1", Reason: "Killing"},
+	}
+	m := New(logs, events, "ns", "ctx")
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+
+	m, _ = update(m, key("/"))
+	for _, r := range "HOG" {
+		m, _ = update(m, key(string(r)))
+	}
+	if !m.editing || m.query != "HOG" {
+		t.Fatalf("editing=%v query=%q", m.editing, m.query)
+	}
+	m, _ = update(m, tea.KeyMsg{Type: tea.KeyEnter})
+
+	if m.editing {
+		t.Fatal("enter should leave edit mode")
+	}
+	if len(m.visLogs) != 1 || m.visLogs[0].Source != "hog-1/app" {
+		t.Fatalf("logs not filtered: %+v", m.visLogs)
+	}
+	if len(m.visEvents) != 1 || m.visEvents[0].Source != "pod/hog-1" {
+		t.Fatalf("events not filtered: %+v", m.visEvents)
+	}
+	if !contains(m.View(), "HOG") {
+		t.Fatal("footer should show the active filter")
+	}
+}
+
+func TestSlashFilter_EscClearsAndQIsTypedNotQuit(t *testing.T) {
+	m := fixtureModel()
+	m, _ = update(m, key("/"))
+	m, cmd := update(m, key("q"))
+	if cmd != nil || m.query != "q" {
+		t.Fatalf("q while editing should type, not quit: query=%q", m.query)
+	}
+	m, _ = update(m, tea.KeyMsg{Type: tea.KeyBackspace})
+	if m.query != "" {
+		t.Fatalf("backspace failed: %q", m.query)
+	}
+	m, _ = update(m, key("x"))
+	m, _ = update(m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.editing || m.query != "" || len(m.visLogs) != 4 {
+		t.Fatalf("esc should clear: editing=%v query=%q vis=%d", m.editing, m.query, len(m.visLogs))
+	}
+}
+
+func TestFilterKeepsWorkingForLiveItems(t *testing.T) {
+	m := fixtureModel()
+	m.logs[0].Text = "keep me"
+	m, _ = update(m, key("/"))
+	for _, r := range "keep" {
+		m, _ = update(m, key(string(r)))
+	}
+	m, _ = update(m, tea.KeyMsg{Type: tea.KeyEnter})
+
+	m, _ = update(m, ItemMsg(timeline.Item{Time: time.Unix(50, 0), Kind: timeline.KindLog, Text: "keep this too"}))
+	m, _ = update(m, ItemMsg(timeline.Item{Time: time.Unix(51, 0), Kind: timeline.KindLog, Text: "drop"}))
+
+	if len(m.visLogs) != 2 {
+		t.Fatalf("want 2 visible logs got %d", len(m.visLogs))
+	}
+}
+
+func TestInsertSorted_AppendsFastWhenNewest(t *testing.T) {
+	items := []timeline.Item{at(1), at(2)}
+	got := insertSorted(items, at(3))
+	if len(got) != 3 || got[2].Time.Unix() != 3 {
+		t.Fatalf("got %v", got)
+	}
+	got = insertSorted(got, at(0))
+	if got[0].Time.Unix() != 0 || len(got) != 4 {
+		t.Fatalf("out of order insert failed: %v", got)
+	}
+}

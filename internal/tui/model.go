@@ -40,11 +40,16 @@ type Model struct {
 	stream      <-chan timeline.Item
 	streamCtx   context.Context
 	refresh     RefreshFunc
+
+	query     string // active filter
+	editing   bool   // true while the user types after /
+	visLogs   []timeline.Item
+	visEvents []timeline.Item
 }
 
 // New builds a model from already collected items.
 func New(logs, events []timeline.Item, namespace, context string) Model {
-	return Model{logs: logs, events: events, namespace: namespace, context: context}
+	return applyFilter(Model{logs: logs, events: events, namespace: namespace, context: context})
 }
 
 // WithSummary sets the pod summaries shown under the header. Returns a new model.
@@ -84,8 +89,16 @@ func update(m Model, msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func handleKey(m Model, msg tea.KeyMsg) (Model, tea.Cmd) {
+	if m.editing {
+		return editQuery(m, msg), nil
+	}
 	switch msg.String() {
-	case "q", "ctrl+c", "esc":
+	case "/":
+		m.editing = true
+	case "esc":
+		m.query = ""
+		m = applyFilter(m)
+	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "tab":
 		m.focus = 1 - m.focus
@@ -117,15 +130,40 @@ func handleKey(m Model, msg tea.KeyMsg) (Model, tea.Cmd) {
 func move(m Model, delta int) Model {
 	m.follow = false
 	if m.focus == focusLogs {
-		m.logCursor = clamp(m.logCursor+delta, len(m.logs))
-		if len(m.logs) > 0 {
-			m.eventCursor = nearestAtOrBefore(m.events, m.logs[m.logCursor].Time)
+		m.logCursor = clamp(m.logCursor+delta, len(m.visLogs))
+		if len(m.visLogs) > 0 {
+			m.eventCursor = nearestAtOrBefore(m.visEvents, m.visLogs[m.logCursor].Time)
 		}
 		return m
 	}
-	m.eventCursor = clamp(m.eventCursor+delta, len(m.events))
-	if len(m.events) > 0 {
-		m.logCursor = nearestAtOrBefore(m.logs, m.events[m.eventCursor].Time)
+	m.eventCursor = clamp(m.eventCursor+delta, len(m.visEvents))
+	if len(m.visEvents) > 0 {
+		m.logCursor = nearestAtOrBefore(m.visLogs, m.visEvents[m.eventCursor].Time)
 	}
 	return m
+}
+
+// editQuery handles keys while the user types a filter after "/".
+// Enter keeps the filter. Esc clears it. Both leave edit mode.
+func editQuery(m Model, msg tea.KeyMsg) Model {
+	switch msg.Type {
+	case tea.KeyEnter:
+		m.editing = false
+	case tea.KeyEsc, tea.KeyCtrlC:
+		m.editing = false
+		m.query = ""
+	case tea.KeyBackspace:
+		if len(m.query) > 0 {
+			r := []rune(m.query)
+			m.query = string(r[:len(r)-1])
+		}
+	case tea.KeyRunes, tea.KeySpace:
+		m.query += string(msg.Runes)
+		if msg.Type == tea.KeySpace {
+			m.query += " "
+		}
+	default:
+		return m
+	}
+	return applyFilter(m)
 }
