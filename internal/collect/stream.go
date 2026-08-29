@@ -24,16 +24,19 @@ type StreamTarget struct {
 // Stream follows container logs and watches events for every target. Items
 // arrive on the returned channel as they happen. The channel closes when ctx
 // ends. Errors from a single stream end that stream only; the rest go on.
-func Stream(ctx context.Context, cs kubernetes.Interface, targets []StreamTarget, opts LogOptions) <-chan timeline.Item {
+func Stream(ctx context.Context, cs kubernetes.Interface, targets []StreamTarget, opts LogOptions, eventOpts ...EventOption) <-chan timeline.Item {
 	out := make(chan timeline.Item, 256)
 	var wg sync.WaitGroup
 	start := time.Now()
 
-	want := make(map[string]bool)
+	var all []Target
+	ns := ""
 	for _, st := range targets {
-		for _, t := range st.Targets {
-			want[t.Kind+"/"+t.Name] = true
-		}
+		all = append(all, st.Targets...)
+		ns = st.Pod.Namespace
+	}
+	f := newEventFilter(ns, all, eventOpts)
+	for _, st := range targets {
 		for _, name := range containerNames(st.Pod, opts.Container) {
 			wg.Add(1)
 			go func(pod *corev1.Pod, container string) {
@@ -45,7 +48,7 @@ func Stream(ctx context.Context, cs kubernetes.Interface, targets []StreamTarget
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		watchEvents(ctx, cs, want, start, out)
+		watchEvents(ctx, cs, f, start, out)
 	}()
 	go func() {
 		wg.Wait()
@@ -78,7 +81,7 @@ func followLog(ctx context.Context, cs kubernetes.Interface, pod *corev1.Pod, co
 	}
 }
 
-func watchEvents(ctx context.Context, cs kubernetes.Interface, want map[string]bool, since time.Time, out chan<- timeline.Item) {
+func watchEvents(ctx context.Context, cs kubernetes.Interface, f eventFilter, since time.Time, out chan<- timeline.Item) {
 	w, err := cs.CoreV1().Events("").Watch(ctx, metav1.ListOptions{})
 	if err != nil {
 		return
@@ -96,7 +99,7 @@ func watchEvents(ctx context.Context, cs kubernetes.Interface, want map[string]b
 				continue
 			}
 			ev, ok := e.Object.(*corev1.Event)
-			if !ok || !want[ev.InvolvedObject.Kind+"/"+ev.InvolvedObject.Name] {
+			if !ok || !f.keep(ev.InvolvedObject, ev.Type) {
 				continue
 			}
 			at := eventTime(*ev)
@@ -104,7 +107,7 @@ func watchEvents(ctx context.Context, cs kubernetes.Interface, want map[string]b
 				continue
 			}
 			it := timeline.Item{Time: at, Kind: timeline.KindEvent, Type: ev.Type, Reason: ev.Reason,
-				Source: sourceOf(ev.InvolvedObject), Text: ev.Message}
+				Source: f.source(ev.InvolvedObject), Text: ev.Message, Count: int(ev.Count)}
 			if !send(ctx, out, it) {
 				return
 			}

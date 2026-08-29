@@ -54,7 +54,9 @@ api-7d9f-abc  node=node-1  phase=Running
   timestamps. Use `-c NAME` for one container. Use `--previous` for the last
   crashed container.
 - Events: for the pod, its owners (ReplicaSet, Deployment, Job, StatefulSet),
-  and the node it runs on.
+  and the node it runs on. Node events live in the `default` namespace and
+  are still found. Events about other pods in other namespaces are not, unless
+  you add `--extra-ns kube-system` (Warnings only, to keep the noise down).
 - Status items (type `Status`): pod conditions, container exits, and node
   trouble (MemoryPressure, DiskPressure, NotReady). These come from the
   object status, so they are still there after Events expire.
@@ -74,6 +76,7 @@ api-7d9f-abc  node=node-1  phase=Running
 | `-t, --tui` | false | side by side view, see below |
 | `-f, --follow` | false | keep running, show new logs and events live |
 | `--grep` | | keep only log lines that match this regex; events always stay |
+| `--extra-ns` | | also show Warning events from these namespaces, tagged `ns/kind/name` |
 
 Times in text output are local time. JSON times are UTC.
 

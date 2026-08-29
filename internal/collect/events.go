@@ -4,7 +4,6 @@ package collect
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -58,11 +57,8 @@ func ownerChain(ctx context.Context, cs kubernetes.Interface, ns string, refs []
 
 // Events lists events in ns (plus cluster-scoped node events) that involve one
 // of the targets and happened at or after since.
-func Events(ctx context.Context, cs kubernetes.Interface, ns string, targets []Target, since time.Time) ([]timeline.Item, error) {
-	want := make(map[string]bool, len(targets))
-	for _, t := range targets {
-		want[t.Kind+"/"+t.Name] = true
-	}
+func Events(ctx context.Context, cs kubernetes.Interface, ns string, targets []Target, since time.Time, opts ...EventOption) ([]timeline.Item, error) {
+	f := newEventFilter(ns, targets, opts)
 	list, err := cs.CoreV1().Events("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("list events: %w", err)
@@ -70,10 +66,7 @@ func Events(ctx context.Context, cs kubernetes.Interface, ns string, targets []T
 	var out []timeline.Item
 	for _, ev := range list.Items {
 		obj := ev.InvolvedObject
-		if obj.Kind != "Node" && obj.Namespace != ns {
-			continue
-		}
-		if !want[obj.Kind+"/"+obj.Name] {
+		if !f.keep(obj, ev.Type) {
 			continue
 		}
 		at := eventTime(ev)
@@ -83,7 +76,7 @@ func Events(ctx context.Context, cs kubernetes.Interface, ns string, targets []T
 		out = append(out, timeline.Item{
 			Time:   at,
 			Kind:   timeline.KindEvent,
-			Source: sourceOf(obj),
+			Source: f.source(obj),
 			Type:   ev.Type,
 			Reason: ev.Reason,
 			Text:   ev.Message,
@@ -91,11 +84,6 @@ func Events(ctx context.Context, cs kubernetes.Interface, ns string, targets []T
 		})
 	}
 	return out, nil
-}
-
-// sourceOf names an involved object as "kind/name".
-func sourceOf(obj corev1.ObjectReference) string {
-	return strings.ToLower(obj.Kind) + "/" + obj.Name
 }
 
 // eventTime picks the best timestamp an Event offers.

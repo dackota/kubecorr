@@ -41,6 +41,7 @@ type options struct {
 	grep      string
 	grepRE    *regexp.Regexp
 	follow    bool
+	extraNS   []string
 }
 
 // New builds the root command.
@@ -62,7 +63,8 @@ every pod in the namespace.`,
   kubecorr --context prod -n api api-7d9f-abc --previous -o json | jq .
   kubecorr -n api --grep 'panic|timeout'
   kubecorr -n api --tui
-  kubecorr -n api -f --tui`,
+  kubecorr -n api -f --tui
+  kubecorr -n api --extra-ns kube-system`,
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -79,6 +81,7 @@ every pod in the namespace.`,
 	cmd.Flags().BoolVarP(&o.tui, "tui", "t", false, "open a side by side view of logs and events")
 	cmd.Flags().StringVar(&o.grep, "grep", "", "only keep log lines that match this regular expression")
 	cmd.Flags().BoolVarP(&o.follow, "follow", "f", false, "keep running and show new logs and events as they happen")
+	cmd.Flags().StringSliceVar(&o.extraNS, "extra-ns", nil, "also show Warning events from these namespaces (example: kube-system)")
 	return cmd
 }
 
@@ -112,7 +115,7 @@ func (o *options) run(ctx context.Context, w io.Writer, args []string) error {
 	items = filterLogs(items, o.grepRE)
 	var stream <-chan timeline.Item
 	if o.follow {
-		stream = collect.Stream(ctx, cs, streamTargets, collect.LogOptions{Container: o.container})
+		stream = collect.Stream(ctx, cs, streamTargets, collect.LogOptions{Container: o.container}, collect.WithExtraNamespaces(o.extraNS...))
 	}
 	if o.tui {
 		return o.runTUI(ctx, items, summaries, ns, stream)
@@ -183,7 +186,7 @@ func collectPod(ctx context.Context, cs kubernetes.Interface, pod *corev1.Pod, s
 	if err != nil {
 		return nil, nil, err
 	}
-	events, err := collect.Events(ctx, cs, pod.Namespace, targets, since)
+	events, err := collect.Events(ctx, cs, pod.Namespace, targets, since, collect.WithExtraNamespaces(o.extraNS...))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -229,7 +232,7 @@ func (o *options) runTUI(ctx context.Context, items []timeline.Item, summaries [
 		ctxName = *o.config.Context
 	}
 	m := tui.New(timeline.Merge(logs, nil), timeline.Merge(events, nil), ns, ctxName).
-		WithSummary(summary.Text(summaries)).
+		WithSummary(summaries).
 		WithFollow(stream != nil).
 		WithStream(ctx, stream)
 	if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx)).Run(); err != nil {

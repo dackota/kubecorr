@@ -113,8 +113,8 @@ func indexOf(s, sub string) int {
 }
 
 func TestViewShowsSummaryUnderHeader(t *testing.T) {
-	m := fixtureModel().WithSummary("api-1  node=n1\n  app restarts=3\n")
-	if out := m.View(); !contains(out, "restarts=3") {
+	m := fixtureModel().WithSummary(sampleSummaries())
+	if out := m.View(); !contains(out, "restarts 7") {
 		t.Fatal("summary missing from view")
 	}
 }
@@ -159,7 +159,7 @@ func longModel(wrap bool) Model {
 		logs = append(logs, timeline.Item{Time: time.Unix(int64(i), 0), Kind: timeline.KindLog, Source: "pod-a/app", Text: long})
 		events = append(events, timeline.Item{Time: time.Unix(int64(i), 0), Kind: timeline.KindEvent, Type: "Warning", Reason: "BackOff", Source: "pod/pod-a", Text: long})
 	}
-	m := New(logs, events, "ns", "ctx").WithSummary("pod-a  node=n1\n  app restarts=3")
+	m := New(logs, events, "ns", "ctx").WithSummary(sampleSummaries())
 	m.wrap = wrap
 	m, _ = update(m, tea.WindowSizeMsg{Width: 100, Height: 24})
 	return m
