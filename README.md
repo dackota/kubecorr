@@ -25,8 +25,6 @@ kubecorr --context prod -n api -l app=api --since 30m
 kubecorr --context prod -n api api-7d9f-abc --previous -o json | jq .
 ```
 
-`--context` is required. The tool never uses your current context by accident.
-
 Output:
 
 ```
@@ -47,7 +45,7 @@ Output:
 
 | Flag | Default | Meaning |
 |------|---------|---------|
-| `--context` | (required) | kubeconfig context |
+| `--context` | current context | kubeconfig context |
 | `-n, --namespace` | from kubeconfig | namespace |
 | `-l, --selector` | | pick pods by label instead of name |
 | `-c, --container` | all | one container only |

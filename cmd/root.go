@@ -70,9 +70,6 @@ func (o *options) run(ctx context.Context, w io.Writer, args []string) error {
 	if err := o.validate(args); err != nil {
 		return err
 	}
-	if o.config.Context == nil || *o.config.Context == "" {
-		return fmt.Errorf("--context is required")
-	}
 	cs, ns, err := o.client()
 	if err != nil {
 		return err
