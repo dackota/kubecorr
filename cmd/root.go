@@ -46,8 +46,10 @@ owners (ReplicaSet, Deployment, Job, ...) and its node. It merges them by
 time into one list so you can see what the cluster did next to what the
 app printed.
 
-Give a pod name, or use -l to pick pods by label.`,
-		Example: `  kubecorr --context prod -n api api-7d9f-abc
+Give a pod name, use -l to pick pods by label, or give nothing to see
+every pod in the namespace.`,
+		Example: `  kubecorr -n api
+  kubecorr --context prod -n api api-7d9f-abc
   kubecorr --context prod -n api -l app=api --since 30m
   kubecorr --context prod -n api api-7d9f-abc --previous -o json | jq .`,
 		Args:          cobra.MaximumNArgs(1),
@@ -58,7 +60,7 @@ Give a pod name, or use -l to pick pods by label.`,
 		},
 	}
 	o.config.AddFlags(cmd.Flags())
-	cmd.Flags().StringVarP(&o.selector, "selector", "l", "", "label selector to pick pods (instead of POD)")
+	cmd.Flags().StringVarP(&o.selector, "selector", "l", "", "label selector to pick pods (default: all pods in the namespace)")
 	cmd.Flags().StringVarP(&o.container, "container", "c", "", "only this container (default: all)")
 	cmd.Flags().BoolVarP(&o.previous, "previous", "p", false, "read logs of the last terminated container")
 	cmd.Flags().DurationVar(&o.since, "since", defaultSince, "how far back to look")
@@ -91,9 +93,6 @@ func (o *options) run(ctx context.Context, w io.Writer, args []string) error {
 }
 
 func (o *options) validate(args []string) error {
-	if len(args) == 0 && o.selector == "" {
-		return fmt.Errorf("give a POD name or -l SELECTOR")
-	}
 	if len(args) == 1 && o.selector != "" {
 		return fmt.Errorf("use POD or -l SELECTOR, not both")
 	}
@@ -132,6 +131,9 @@ func (o *options) pods(ctx context.Context, cs kubernetes.Interface, ns string, 
 		return nil, fmt.Errorf("list pods with -l %q: %w", o.selector, err)
 	}
 	if len(list.Items) == 0 {
+		if o.selector == "" {
+			return nil, fmt.Errorf("no pods in namespace %s", ns)
+		}
 		return nil, fmt.Errorf("no pods in %s match -l %q", ns, o.selector)
 	}
 	return list.Items, nil

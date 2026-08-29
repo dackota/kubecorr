@@ -15,6 +15,9 @@ go install github.com/dackota/kubecorr@latest
 ## Use
 
 ```sh
+# every pod in a namespace
+kubecorr -n api
+
 # one pod
 kubecorr --context prod -n api api-7d9f-abc
 
@@ -47,7 +50,7 @@ Output:
 |------|---------|---------|
 | `--context` | current context | kubeconfig context |
 | `-n, --namespace` | from kubeconfig | namespace |
-| `-l, --selector` | | pick pods by label instead of name |
+| `-l, --selector` | all pods | pick pods by label |
 | `-c, --container` | all | one container only |
 | `-p, --previous` | false | logs of the last terminated container |
 | `--since` | `1h` | how far back to look |
