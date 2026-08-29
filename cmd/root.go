@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/dackota/kubecorr/internal/collect"
 	"github.com/dackota/kubecorr/internal/format"
+	"github.com/dackota/kubecorr/internal/summary"
 	"github.com/dackota/kubecorr/internal/timeline"
 	"github.com/dackota/kubecorr/internal/tui"
 )
@@ -36,6 +38,8 @@ type options struct {
 	since     time.Duration
 	output    string
 	tui       bool
+	grep      string
+	grepRE    *regexp.Regexp
 }
 
 // New builds the root command.
@@ -55,6 +59,7 @@ every pod in the namespace.`,
   kubecorr --context prod -n api api-7d9f-abc
   kubecorr --context prod -n api -l app=api --since 30m
   kubecorr --context prod -n api api-7d9f-abc --previous -o json | jq .
+  kubecorr -n api --grep 'panic|timeout'
   kubecorr -n api --tui`,
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
@@ -70,6 +75,7 @@ every pod in the namespace.`,
 	cmd.Flags().DurationVar(&o.since, "since", defaultSince, "how far back to look")
 	cmd.Flags().StringVarP(&o.output, "output", "o", outputText, "output format: text or json")
 	cmd.Flags().BoolVarP(&o.tui, "tui", "t", false, "open a side by side view of logs and events")
+	cmd.Flags().StringVar(&o.grep, "grep", "", "only keep log lines that match this regular expression")
 	return cmd
 }
 
@@ -87,37 +93,20 @@ func (o *options) run(ctx context.Context, w io.Writer, args []string) error {
 	}
 	since := time.Now().Add(-o.since)
 	var items []timeline.Item
+	var summaries []summary.PodSummary
 	for i := range pods {
 		got, err := collectPod(ctx, cs, &pods[i], since, o)
 		if err != nil {
 			return err
 		}
 		items = append(items, got...)
+		summaries = append(summaries, summary.FromPod(&pods[i]))
 	}
+	items = filterLogs(items, o.grepRE)
 	if o.tui {
-		return o.runTUI(items, ns)
+		return o.runTUI(items, summaries, ns)
 	}
-	return o.write(w, timeline.Merge(items, nil))
-}
-
-func (o *options) runTUI(items []timeline.Item, ns string) error {
-	var logs, events []timeline.Item
-	for _, it := range items {
-		if it.Kind == timeline.KindEvent {
-			events = append(events, it)
-		} else {
-			logs = append(logs, it)
-		}
-	}
-	ctxName := ""
-	if o.config.Context != nil {
-		ctxName = *o.config.Context
-	}
-	m := tui.New(timeline.Merge(logs, nil), timeline.Merge(events, nil), ns, ctxName)
-	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
-		return fmt.Errorf("run tui: %w", err)
-	}
-	return nil
+	return o.write(w, timeline.Merge(items, nil), summaries)
 }
 
 func (o *options) validate(args []string) error {
@@ -126,6 +115,13 @@ func (o *options) validate(args []string) error {
 	}
 	if o.output != outputText && o.output != outputJSON {
 		return fmt.Errorf("--output must be %s or %s", outputText, outputJSON)
+	}
+	if o.grep != "" {
+		re, err := regexp.Compile(o.grep)
+		if err != nil {
+			return fmt.Errorf("bad --grep: %w", err)
+		}
+		o.grepRE = re
 	}
 	return nil
 }
@@ -167,6 +163,7 @@ func (o *options) pods(ctx context.Context, cs kubernetes.Interface, ns string, 
 	return list.Items, nil
 }
 
+// collectPod gathers logs, Events, pod status items and node status items.
 func collectPod(ctx context.Context, cs kubernetes.Interface, pod *corev1.Pod, since time.Time, o *options) ([]timeline.Item, error) {
 	targets, err := collect.Targets(ctx, cs, pod)
 	if err != nil {
@@ -176,6 +173,12 @@ func collectPod(ctx context.Context, cs kubernetes.Interface, pod *corev1.Pod, s
 	if err != nil {
 		return nil, err
 	}
+	events = append(events, collect.StatusItems(pod, since)...)
+	nodeItems, err := collect.NodeItems(ctx, cs, pod.Spec.NodeName, since)
+	if err != nil {
+		return nil, err
+	}
+	events = append(events, nodeItems...)
 	logs, err := collect.Logs(ctx, cs, pod, collect.LogOptions{Container: o.container, Previous: o.previous, Since: since})
 	if err != nil {
 		return nil, err
@@ -183,13 +186,53 @@ func collectPod(ctx context.Context, cs kubernetes.Interface, pod *corev1.Pod, s
 	return timeline.Merge(logs, events), nil
 }
 
-func (o *options) write(w io.Writer, items []timeline.Item) error {
+// filterLogs drops log lines that do not match re. Events always stay.
+// A nil re keeps everything.
+func filterLogs(items []timeline.Item, re *regexp.Regexp) []timeline.Item {
+	if re == nil {
+		return items
+	}
+	out := make([]timeline.Item, 0, len(items))
+	for _, it := range items {
+		if it.Kind == timeline.KindEvent || re.MatchString(it.Text) {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+func (o *options) runTUI(items []timeline.Item, summaries []summary.PodSummary, ns string) error {
+	var logs, events []timeline.Item
+	for _, it := range items {
+		if it.Kind == timeline.KindEvent {
+			events = append(events, it)
+		} else {
+			logs = append(logs, it)
+		}
+	}
+	ctxName := ""
+	if o.config.Context != nil {
+		ctxName = *o.config.Context
+	}
+	m := tui.New(timeline.Merge(logs, nil), timeline.Merge(events, nil), ns, ctxName).WithSummary(summary.Text(summaries))
+	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
+		return fmt.Errorf("run tui: %w", err)
+	}
+	return nil
+}
+
+func (o *options) write(w io.Writer, items []timeline.Item, summaries []summary.PodSummary) error {
 	if o.output == outputJSON {
 		return format.JSON(w, items)
 	}
 	useColor := false
 	if f, ok := w.(*os.File); ok {
 		useColor = term.IsTerminal(int(f.Fd())) && os.Getenv("NO_COLOR") == ""
+	}
+	if s := summary.Text(summaries); s != "" {
+		if _, err := fmt.Fprint(w, s, "\n"); err != nil {
+			return fmt.Errorf("write summary: %w", err)
+		}
 	}
 	return format.Text(w, items, useColor)
 }

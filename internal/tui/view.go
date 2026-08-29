@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/dackota/kubecorr/internal/format"
 	"github.com/dackota/kubecorr/internal/timeline"
 )
 
@@ -17,6 +18,8 @@ var (
 	styleCursor  = lipgloss.NewStyle().Reverse(true)
 	styleWarning = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	styleNormal  = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	styleStatus  = lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
+	styleBad     = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	styleFocus   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("2"))
 	styleBlur    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("8"))
 	podColors    = []string{"2", "5", "4", "1", "10", "13", "12", "9"}
@@ -30,7 +33,12 @@ func (m Model) View() string {
 	header := styleHeader.Render(fmt.Sprintf(" kubecorr  ns=%s  ctx=%s", m.namespace, m.context))
 	footer := styleHint.Render(" [q] quit  [tab] focus  [j/k] scroll  [g/G] top/end  [w] wrap")
 
-	bodyHeight := m.height - chromeRows
+	summaryRows := 0
+	if m.summary != "" {
+		summaryRows = strings.Count(m.summary, "\n") + 1
+		header += "\n" + styleHint.Render(m.summary)
+	}
+	bodyHeight := m.height - chromeRows - summaryRows
 	if bodyHeight < 1 {
 		bodyHeight = 1
 	}
@@ -80,15 +88,25 @@ func (m Model) logLine(it timeline.Item, width int) string {
 		if cut < 0 {
 			cut = 0
 		}
-		return fmt.Sprintf("%s %s  %s", styleHint.Render(it.Time.Local().Format(timeLayout)), src, truncate(it.Text, cut))
+		return fmt.Sprintf("%s %s  %s", styleHint.Render(it.Time.Local().Format(timeLayout)), src, styleText(truncate(it.Text, cut)))
 	}
-	return fmt.Sprintf("%s %s  %s", styleHint.Render(it.Time.Local().Format(timeLayout)), src, it.Text)
+	return fmt.Sprintf("%s %s  %s", styleHint.Render(it.Time.Local().Format(timeLayout)), src, styleText(it.Text))
+}
+
+func styleText(s string) string {
+	if format.IsBad(s) {
+		return styleBad.Render(s)
+	}
+	return s
 }
 
 func (m Model) eventLine(it timeline.Item, width int) string {
 	style := styleNormal
-	if it.Type == "Warning" {
+	switch it.Type {
+	case "Warning":
 		style = styleWarning
+	case "Status":
+		style = styleStatus
 	}
 	plain := fmt.Sprintf("%s %-7s %-12s %s  %s", it.Time.Local().Format("15:04:05"), it.Type, it.Reason, it.Source, it.Text)
 	if !m.wrap {

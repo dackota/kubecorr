@@ -103,3 +103,11 @@ func colorOf(line string) string {
 	}
 	return line[i : i+5]
 }
+
+func TestText_BadLogLinesAreRedWhenColorOn(t *testing.T) {
+	var buf bytes.Buffer
+	_ = Text(&buf, []timeline.Item{{Time: ts, Kind: timeline.KindLog, Source: "p/a", Text: "panic: x"}}, true)
+	if !strings.Contains(buf.String(), ansiRed+"panic: x") {
+		t.Fatalf("not red: %q", buf.String())
+	}
+}

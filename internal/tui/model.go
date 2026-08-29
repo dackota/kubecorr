@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/dackota/kubecorr/internal/timeline"
@@ -32,11 +34,18 @@ type Model struct {
 	wrap        bool
 	width       int
 	height      int
+	summary     string
 }
 
 // New builds a model from already collected items.
 func New(logs, events []timeline.Item, namespace, context string) Model {
 	return Model{logs: logs, events: events, namespace: namespace, context: context}
+}
+
+// WithSummary sets the text shown under the header. Returns a new model.
+func (m Model) WithSummary(s string) Model {
+	m.summary = strings.TrimRight(s, "\n")
+	return m
 }
 
 // Init satisfies tea.Model.

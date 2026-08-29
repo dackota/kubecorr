@@ -110,3 +110,10 @@ func indexOf(s, sub string) int {
 	}
 	return -1
 }
+
+func TestViewShowsSummaryUnderHeader(t *testing.T) {
+	m := fixtureModel().WithSummary("api-1  node=n1\n  app restarts=3\n")
+	if out := m.View(); !contains(out, "restarts=3") {
+		t.Fatal("summary missing from view")
+	}
+}

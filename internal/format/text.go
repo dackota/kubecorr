@@ -67,7 +67,11 @@ func logLine(stamp string, it timeline.Item, useColor bool) string {
 	}
 	head := ansiDim + stamp + " " + fmt.Sprintf("%-5s", it.Kind) + ansiReset
 	src := podColor(it.Source) + it.Source + ansiReset
-	return head + " " + src + "  " + it.Text
+	text := it.Text
+	if IsBad(text) {
+		text = ansiRed + text + ansiReset
+	}
+	return head + " " + src + "  " + text
 }
 
 // podColor returns a stable color for the pod part of "pod/container".
