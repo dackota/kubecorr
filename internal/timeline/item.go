@@ -15,7 +15,7 @@ const (
 type Item struct {
 	Time   time.Time `json:"time"`
 	Kind   Kind      `json:"kind"`
-	Source string    `json:"source"` // pod/container for logs; involved object for events
+	Source string    `json:"source"`           // pod/container for logs; involved object for events
 	Type   string    `json:"type,omitempty"`   // event only: Normal or Warning
 	Reason string    `json:"reason,omitempty"` // event only
 	Text   string    `json:"text"`

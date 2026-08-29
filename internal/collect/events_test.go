@@ -22,7 +22,7 @@ func event(name, kind, obj, typ, reason string, at time.Time) *corev1.Event {
 		ObjectMeta:     metav1.ObjectMeta{Name: name, Namespace: ns},
 		InvolvedObject: corev1.ObjectReference{Kind: kind, Name: obj, Namespace: ns},
 		Type:           typ, Reason: reason, Message: reason + " msg",
-		LastTimestamp:  metav1.NewTime(at),
+		LastTimestamp: metav1.NewTime(at),
 	}
 }
 
