@@ -114,3 +114,15 @@ go test ./...
 ```
 
 Tests use the fake client from `client-go`. No cluster is needed.
+
+To check the tool against a real cluster, deploy the broken apps in
+`testdata/broken.yaml`. One crash loops with failing probes, one gets OOM
+killed. Then run the tool on the `kubecorr-test` namespace.
+
+```sh
+kubectl --context <ctx> apply -f testdata/broken.yaml
+sleep 90
+kubecorr --context <ctx> -n kubecorr-test
+kubecorr --context <ctx> -n kubecorr-test --tui -f
+kubectl --context <ctx> delete namespace kubecorr-test
+```

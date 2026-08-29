@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubecorr-test
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crasher
+  namespace: kubecorr-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: crasher}
+  template:
+    metadata:
+      labels: {app: crasher}
+    spec:
+      containers:
+        - name: app
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "starting crasher v1.0"
+              echo "connecting to db"
+              sleep 8
+              echo "error: db connection timeout after 5s"
+              sleep 4
+              echo "panic: nil pointer dereference"
+              exit 1
+          readinessProbe:
+            httpGet: {path: /ready, port: 8080}
+            periodSeconds: 3
+          livenessProbe:
+            httpGet: {path: /live, port: 8080}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hog
+  namespace: kubecorr-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: hog}
+  template:
+    metadata:
+      labels: {app: hog}
+    spec:
+      containers:
+        - name: app
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "hog starting, allocating memory"
+              sleep 3
+              head -c 300m /dev/zero | tail
+          resources:
+            limits: {memory: 32Mi}
+            requests: {memory: 16Mi}
