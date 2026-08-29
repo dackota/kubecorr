@@ -75,3 +75,31 @@ func TestJSON_EmptyIsEmptyArrayNotNull(t *testing.T) {
 		t.Fatalf("got %q", buf.String())
 	}
 }
+
+func TestText_SamePodSameColorDifferentPodDifferentColor(t *testing.T) {
+	logs := []timeline.Item{
+		{Time: ts, Kind: timeline.KindLog, Source: "pod-a/app", Text: "1"},
+		{Time: ts, Kind: timeline.KindLog, Source: "pod-b/app", Text: "2"},
+		{Time: ts, Kind: timeline.KindLog, Source: "pod-a/sidecar", Text: "3"},
+	}
+	var buf bytes.Buffer
+
+	_ = Text(&buf, logs, true)
+
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	if colorOf(lines[0]) != colorOf(lines[2]) {
+		t.Fatalf("pod-a lines differ in color: %q %q", lines[0], lines[2])
+	}
+	if colorOf(lines[0]) == colorOf(lines[1]) {
+		t.Fatalf("pod-a and pod-b share a color: %q %q", lines[0], lines[1])
+	}
+}
+
+// colorOf returns the escape code that wraps the source field.
+func colorOf(line string) string {
+	i := strings.Index(line, "\x1b[3")
+	if i < 0 {
+		return ""
+	}
+	return line[i : i+5]
+}
