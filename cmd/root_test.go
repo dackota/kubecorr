@@ -79,3 +79,31 @@ func TestValidate_RejectsBadGrep(t *testing.T) {
 		t.Fatal("want error")
 	}
 }
+
+func TestUsePlain_FalseOnATerminalWithDefaults(t *testing.T) {
+	o := &options{output: outputText}
+	if o.usePlain(true) {
+		t.Fatal("want the TUI by default on a terminal")
+	}
+}
+
+func TestUsePlain_TrueWhenFlagSet(t *testing.T) {
+	o := &options{output: outputText, plain: true}
+	if !o.usePlain(true) {
+		t.Fatal("want plain when --plain is set")
+	}
+}
+
+func TestUsePlain_TrueWhenOutputIsJSON(t *testing.T) {
+	o := &options{output: outputJSON}
+	if !o.usePlain(true) {
+		t.Fatal("want plain when -o json")
+	}
+}
+
+func TestUsePlain_TrueWhenNotATerminal(t *testing.T) {
+	o := &options{output: outputText}
+	if !o.usePlain(false) {
+		t.Fatal("want plain when stdout is not a terminal")
+	}
+}

@@ -38,7 +38,7 @@ type options struct {
 	previous  bool
 	since     time.Duration
 	output    string
-	tui       bool
+	plain     bool
 	grep      string
 	grepRE    *regexp.Regexp
 	follow    bool
@@ -58,14 +58,18 @@ time into one list so you can see what the cluster did next to what the
 app printed.
 
 Give a pod name, use -l to pick pods by label, or give nothing to see
-every pod in the namespace.`,
+every pod in the namespace.
+
+By default it opens a side by side view: logs on the left, events on the
+right. Use --plain to print one merged list instead. Plain turns on by
+itself with -o json, or when stdout is not a terminal, so pipes work.`,
 		Example: `  kubecorr -n api
   kubecorr --context prod -n api api-7d9f-abc
   kubecorr --context prod -n api -l app=api --since 30m
   kubecorr --context prod -n api api-7d9f-abc --previous -o json | jq .
   kubecorr -n api --grep 'panic|timeout'
-  kubecorr -n api --tui
-  kubecorr -n api -f --tui
+  kubecorr -n api -f
+  kubecorr -n api --plain
   kubecorr -n api --extra-ns kube-system`,
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
@@ -80,7 +84,7 @@ every pod in the namespace.`,
 	cmd.Flags().BoolVarP(&o.previous, "previous", "p", false, "read logs of the last terminated container")
 	cmd.Flags().DurationVar(&o.since, "since", defaultSince, "how far back to look")
 	cmd.Flags().StringVarP(&o.output, "output", "o", outputText, "output format: text or json")
-	cmd.Flags().BoolVarP(&o.tui, "tui", "t", false, "open a side by side view of logs and events")
+	cmd.Flags().BoolVarP(&o.plain, "plain", "P", false, "print one merged list instead of the side by side view")
 	cmd.Flags().StringVar(&o.grep, "grep", "", "only keep log lines that match this regular expression")
 	cmd.Flags().BoolVarP(&o.follow, "follow", "f", false, "keep running and show new logs and events as they happen")
 	cmd.Flags().Int64Var(&o.tail, "tail", defaultTail, "max log lines per container; 0 for no limit")
@@ -120,7 +124,7 @@ func (o *options) run(ctx context.Context, w io.Writer, args []string) error {
 	if o.follow {
 		stream = collect.Stream(ctx, cs, streamTargets, collect.LogOptions{Container: o.container}, collect.WithExtraNamespaces(o.extraNS...))
 	}
-	if o.tui {
+	if !o.usePlain(isTerminalWriter(w)) {
 		var refresh tui.RefreshFunc
 		if o.follow {
 			refresh = o.summaryRefresher(ctx, cs, ns, args)
@@ -148,6 +152,19 @@ func (o *options) validate(args []string) error {
 		o.grepRE = re
 	}
 	return nil
+}
+
+// usePlain reports whether to print a merged list instead of the side by
+// side view. The view needs a terminal it can draw on, and JSON is meant to
+// be piped, so both force plain.
+func (o *options) usePlain(isTTY bool) bool {
+	return o.plain || o.output == outputJSON || !isTTY
+}
+
+// isTerminalWriter reports whether w is a terminal.
+func isTerminalWriter(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	return ok && term.IsTerminal(int(f.Fd()))
 }
 
 func (o *options) client() (kubernetes.Interface, string, error) {
@@ -253,10 +270,7 @@ func (o *options) write(w io.Writer, items []timeline.Item, summaries []summary.
 	if o.output == outputJSON {
 		return format.JSON(w, items)
 	}
-	useColor := false
-	if f, ok := w.(*os.File); ok {
-		useColor = term.IsTerminal(int(f.Fd())) && os.Getenv("NO_COLOR") == ""
-	}
+	useColor := isTerminalWriter(w) && os.Getenv("NO_COLOR") == ""
 	if s := summary.Text(summaries); s != "" {
 		if _, err := fmt.Fprint(w, s, "\n"); err != nil {
 			return fmt.Errorf("write summary: %w", err)
@@ -268,10 +282,7 @@ func (o *options) write(w io.Writer, items []timeline.Item, summaries []summary.
 // writeStream prints items as they arrive until the stream closes.
 // Lines print in arrival order, which is close to, but not always, time order.
 func (o *options) writeStream(w io.Writer, stream <-chan timeline.Item) error {
-	useColor := false
-	if f, ok := w.(*os.File); ok {
-		useColor = term.IsTerminal(int(f.Fd())) && os.Getenv("NO_COLOR") == ""
-	}
+	useColor := isTerminalWriter(w) && os.Getenv("NO_COLOR") == ""
 	for it := range stream {
 		if it.Kind == timeline.KindLog && o.grepRE != nil && !o.grepRE.MatchString(it.Text) {
 			continue
